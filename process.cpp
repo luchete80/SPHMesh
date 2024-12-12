@@ -1,7 +1,8 @@
 #include <iostream>
+#include <array>
+
 #include <fstream>
 #include <vector>
-#include <array>
 #include <unordered_map>
 #include <sstream>
 #include <string>
@@ -9,12 +10,34 @@
 #include <cmath>
 #include <omp.h>
 
+using namespace std;
+using Tetrahedron = std::array<int, 4>;
+
+
+// Define a 3D point
 struct Point {
     double x, y, z;
+
+    // Subtract operator
+    Point operator-(const Point& other) const {
+        return {x - other.x, y - other.y, z - other.z};
+    }
+
+    // Dot product
+    double dot(const Point& other) const {
+        return x * other.x + y * other.y + z * other.z;
+    }
+
+    // Cross product
+    Point cross(const Point& other) const {
+        return {
+            y * other.z - z * other.y,
+            z * other.x - x * other.z,
+            x * other.y - y * other.x
+        };
+    }
 };
 
-using Tetrahedron = std::array<int, 4>;
-using namespace std;
 
 std::pair<std::unordered_map<int, Point>, std::vector<Tetrahedron>> parseNastranShortField(const std::string& filePath, Point& minCoords, Point& maxCoords) {
     std::unordered_map<int, Point> nodes;
@@ -58,81 +81,59 @@ std::pair<std::unordered_map<int, Point>, std::vector<Tetrahedron>> parseNastran
 
     return {nodes, tetrahedra};
 }
+
 /*
-double signedVolume(const Point& a, const Point& b, const Point& c, const Point& d) {
-    return ((a.x * (b.y * c.z - c.y * b.z) - a.y * (b.x * c.z - c.x * b.z) + a.z * (b.x * c.y - c.x * b.y)) -
-            (a.x * (b.y * d.z - d.y * b.z) - a.y * (b.x * d.z - d.x * b.z) + a.z * (b.x * d.y - d.x * b.y))) / 6.0;
+////IS ELEMENT IS ORIENTED AND NORMAL ARE ALWAYS OUTER OR INNER
+//CHANGE TO TETRAHEDRON
+// Compute if a point is inside a tetrahedron
+bool isPointInsideTetra(const Point& p, const Point& a, const Point& b, const Point& c, const Point& d) {
+    // Compute normals for each face
+    Point n1 = (b - a).cross(c - a); // Normal to face ABC
+    Point n2 = (c - a).cross(d - a); // Normal to face ACD
+    Point n3 = (d - a).cross(b - a); // Normal to face ADB
+    Point n4 = (c - b).cross(d - b); // Normal to face BCD
+
+    
+    // Check the dot product with the point and a vertex of each face
+    bool inside = true;
+    inside &= (n1.dot(p - a) <= 0); // Check face ABC
+    inside &= (n2.dot(p - a) <= 0); // Check face ACD
+    inside &= (n3.dot(p - a) <= 0); // Check face ADB
+    inside &= (n4.dot(p - b) <= 0); // Check face BCD
+
+    return inside;
 }
 */
 
-
-// Compute cross product of two 3D vectors
-Point crossProduct(const Point& u, const Point& v) {
-    return {
-        u.y * v.z - u.z * v.y,
-        u.z * v.x - u.x * v.z,
-        u.x * v.y - u.y * v.x
-    };
-}
-
-// Compute dot product of two 3D vectors
-double dotProduct(const Point& u, const Point& v) {
-    return u.x * v.x + u.y * v.y + u.z * v.z;
-}
-
-/*
-// Compute signed volume of a tetrahedron
-double signedVolume(const Point& a, const Point& b, const Point& c, const Point& d) {
-    Point ab = {b.x - a.x, b.y - a.y, b.z - a.z};
-    Point ac = {c.x - a.x, c.y - a.y, c.z - a.z};
-    Point ad = {d.x - a.x, d.y - a.y, d.z - a.z};
-
-    Point cross = crossProduct(ac, ad);
-    double volume = dotProduct(ab, cross) / 6.0;
-    return volume;
-}
-*/
-
-double signedVolume(const Point& a, const Point& b, const Point& c, const Point& d) {
-    Point ab = {b.x - a.x, b.y - a.y, b.z - a.z};
-    Point ac = {c.x - a.x, c.y - a.y, c.z - a.z};
-    Point ad = {d.x - a.x, d.y - a.y, d.z - a.z};
-
-    double volume = 1.0/6.0 * (ab.x*(ac.y*ad.z-ac.z*ad.y)-ab.y*(ac.x*ad.z-ac.z*ad.x)+ab.z*(ac.x*ad.y-ac.y*ad.x));
+bool sameSide(const Point& p, const Point& a, const Point& b, const Point& c, const Point& d) {
+    bool ret = false;
+    Point n = (b - a).cross(c - a); // Normal to face ABC  
+    double dotd = n.dot(d-a);
+    double dotp = n.dot(p-a);
+    if (dotd>0&&dotp>0 || dotd<0 && dotp<0)
+      ret = true;
     
-    //Point cross = crossProduct(ac, ad);
-    //double volume = dotProduct(ab, cross) / 6.0;
-    
-    return volume;
+    return ret;
+}
+//CHANGE TO TETRAHEDRON
+// Compute if a point is inside a tetrahedron
+bool isPointInsideTetra(const Point& p, const Point& a, const Point& b, const Point& c, const Point& d) {
+    // Compute normals for each face
+    return sameSide(p,a,b,c,d) &&
+           sameSide(p,b,c,d,a) &&
+           sameSide(p,c,d,a,b) &&
+           sameSide(p,d,a,b,c);
     
 }
 
-
-void print(const Point & p){
-  cout << p.x<<", "<<p.y<<", "<<p.z<<endl;
-  }
-bool isPointInsideTetrahedron(const Point& p, const std::array<Point, 4>& vertices) {
-    for (auto &v:vertices )
-      print (v);
-      
-    double vABCD = signedVolume(vertices[0], vertices[1], vertices[2], vertices[3]);
-    double vPBCD = signedVolume(p, vertices[1], vertices[2], vertices[3]);
-    double vPADC = signedVolume(vertices[0], p, vertices[3], vertices[2]);
-    double vPABD = signedVolume(vertices[0], vertices[1], p, vertices[3]);
-    double vPABC = signedVolume(vertices[0], vertices[1], vertices[2],p);
-    cout << "ABS "<< std::fabs(vPBCD + vPADC + vPABD + vPABC - vABCD)<<endl;
-    return std::fabs(vPBCD + vPADC + vPABD + vPABC - vABCD) < 1e-1;
-}
 
 bool isPointInsideMesh(const Point& point, const std::unordered_map<int, Point>& nodes, const std::vector<Tetrahedron>& tetrahedra) {
     int i=0;
     for (const auto& tet : tetrahedra) {
-        cout << "TETRA "<<i<<endl;
-        std::array<Point, 4> vertices = {nodes.at(tet[0]), nodes.at(tet[1]), nodes.at(tet[2]), nodes.at(tet[3])};
-        if (isPointInsideTetrahedron(point, vertices)) {
-            cout << "FOUND"<<endl;
+        //cout << "TETRA "<<i<<endl;
+        //std::array<Point, 4> vertices = {nodes.at(tet[0]), nodes.at(tet[1]), nodes.at(tet[2]), nodes.at(tet[3])};
+        if (isPointInsideTetra(point, /*vertices*/nodes.at(tet[0]), nodes.at(tet[1]), nodes.at(tet[2]), nodes.at(tet[3]))) {
             return true;
-            cout << "FOUND"<<endl;
         }
         i++;
     }
@@ -172,6 +173,25 @@ void writeSphToKFile(const std::vector<Point>& points, const std::string& output
     file << "*END\n";
 }
 
+/*
+int main() {
+    // Tetrahedron vertices
+    Point a = {0, 0, 0};
+    Point b = {1, 0, 0};
+    Point c = {0, 1, 0};
+    Point d = {0, 0, 1};
+
+    // Point to check
+    Point p = {0.25, 0.25, 0.25}; // Inside
+    Point q = {1, 1, 1};          // Outside
+
+    std::cout << "Point P is " << (isPointInsideTetra(p, a, b, c, d) ? "inside" : "outside") << " the tetrahedron.\n";
+    std::cout << "Point Q is " << (isPointInsideTetra(q, a, b, c, d) ? "inside" : "outside") << " the tetrahedron.\n";
+
+    return 0;
+}*/
+
+
 int main(int argc, char *argv[]) {
 
     double spacing = 1.0;
@@ -196,7 +216,7 @@ int main(int argc, char *argv[]) {
     #pragma omp parallel for
     for (size_t i = 0; i < grid.size(); ++i) {
         cout << "POINT "<<i<<endl;
-        print(grid[i]);
+        //print(grid[i]);
         if (isPointInsideMesh(grid[i], nodes, tetrahedra)) {
             cout << "Grid "<<i<<grid[i].x<<", "<<grid[i].y<<endl;
             #pragma omp critical
