@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <omp.h>
+#include <stdexcept>
+#include <iomanip>
 
 using namespace std;
 using Tetrahedron = std::array<int, 4>;
@@ -152,7 +154,7 @@ std::vector<Point> generateCartesianGrid(const Point& minCoords, const Point& ma
     std::cout << "Generating "<<grid.size() << " points "<<std::endl;
     return grid;
 }
-
+/*
 void writeSphToKFile(const std::vector<Point>& points, const std::string& outputFile) {
     std::ofstream file(outputFile);
     if (!file.is_open()) {
@@ -168,6 +170,36 @@ void writeSphToKFile(const std::vector<Point>& points, const std::string& output
     file << "*ELEMENT_SPH\n";
     for (size_t i = 0; i < points.size(); ++i) {
         file << i + 1 << "," << i + 1 << "\n";
+    }
+
+    file << "*END\n";
+}
+*/
+void writeSphToKFile(const std::vector<Point>& points, const std::string& outputFile) {
+    std::ofstream file(outputFile);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open output file");
+    }
+
+    file << "*KEYWORD\n";
+    file << "*NODE\n";
+
+    for (size_t i = 0; i < points.size(); ++i) {
+        file 
+            << std::setw(8) << i + 1 // Node ID
+            << std::setw(16) << std::fixed << std::setprecision(6) << points[i].x // X-coordinate
+            << std::setw(16) << points[i].y // Y-coordinate
+            << std::setw(16) << points[i].z // Z-coordinate
+            << "\n";
+    }
+
+    file << "*ELEMENT_SPH\n";
+
+    for (size_t i = 0; i < points.size(); ++i) {
+        file 
+            << std::setw(8) << i + 1 // Element ID
+            << std::setw(8) << i + 1 // Node ID
+            << "\n";
     }
 
     file << "*END\n";
@@ -215,15 +247,17 @@ int main(int argc, char *argv[]) {
     int ins = 0;
     #pragma omp parallel for
     for (size_t i = 0; i < grid.size(); ++i) {
-        cout << "POINT "<<i<<endl;
+        if (i%100 == 0)
+          cout << "POINT "<<i<<" of "<<grid.size()<<endl;
+        //cout << "POINT "<<i<<endl;
         //print(grid[i]);
         if (isPointInsideMesh(grid[i], nodes, tetrahedra)) {
-            cout << "Grid "<<i<<grid[i].x<<", "<<grid[i].y<<endl;
+            //cout << "Grid "<<i<<grid[i].x<<", "<<grid[i].y<<endl;
             #pragma omp critical
             insidePoints.push_back(grid[i]);
             ins ++;
         }
-        cout << "Chekcing point "<<i <<", Inside points "<<ins<<endl; 
+        //cout << "Chekcing point "<<i <<", Inside points "<<ins<<endl; 
     }
 
     std::string outputFile = "sph_particles.k";
